@@ -1,11 +1,11 @@
 # Weather-App-Assessment
-class=class="str">"cm"># Backend Section 1: Core Infrastructure Layer
+# Backend Section 1: Core Infrastructure Layer
 
 FastAPI backend for the Full Stack Weather Application internship assessment.
 
 ---
 
-class=class="str">"cm">## Stack
+## Stack
 
 | Layer | Technology |
 |---|---|
@@ -18,38 +18,38 @@ class=class="str">"cm">## Stack
 
 ---
 
-class=class="str">"cm">## Setup
+## Setup
 
-class=class="str">"cm">### 1. Clone and enter the backend directory
+### 1. Clone and enter the backend directory
 ```bash
 cd backend
 ```
 
-class=class="str">"cm">### 2. Create a virtual environment
+### 2. Create a virtual environment
 ```bash
 python3.11 -m venv venv
 source venv/bin/activate   class=class="str">"cm"># Windows: venv\Scripts\activate
 ```
 
-class=class="str">"cm">### 3. Install dependencies
+### 3. Install dependencies
 ```bash
 pip install -r requirements.txt
 ```
 
-class=class="str">"cm">### 4. Configure environment variables
+### 4. Configure environment variables
 ```bash
 cp .env.example .env
 class=class="str">"cm"># Open .env and fill in your DATABASE_URL class="kw">from Supabase
 ```
 
-class=class="str">"cm">### 5. Run the server
+### 5. Run the server
 ```bash
 uvicorn app.main:app --reload
 ```
 
 ---
 
-class=class="str">"cm">## Supabase Setup
+## Supabase Setup
 
 1. Go to [supabase.com](https://supabase.com) and create a free project
 2. Navigate to: **Settings → Database → Connection string → URI**
@@ -58,7 +58,7 @@ class=class="str">"cm">## Supabase Setup
 
 ---
 
-class=class="str">"cm">## Test DB Connectivity
+## Test DB Connectivity
 
 ```bash
 curl http://localhost:8000/health
@@ -71,7 +71,7 @@ Expected response:
 
 ---
 
-class=class="str">"cm">## Expected Console Output (Success)
+## Expected Console Output (Success)
 
 ```
 INFO     | app.main | 🚀 Starting Weather App API v0.1.0
@@ -82,7 +82,7 @@ INFO     | uvicorn.error | Application startup complete.
 
 ---
 
-class=class="str">"cm">## Common Errors
+## Common Errors
 
 | Error | Cause | Fix |
 |---|---|---|
@@ -94,7 +94,7 @@ class=class="str">"cm">## Common Errors
 
 ---
 
-class=class="str">"cm">## API Docs
+## API Docs
 
 Once the server is running:
 - Swagger UI: http://localhost:8000/docs
@@ -103,7 +103,7 @@ Once the server is running:
 
 ---
 
-class=class="str">"cm">## Architecture Notes
+## Architecture Notes
 
 - **Clean layered architecture**: core (config) → db (engine/session) → api (routes) → main (wiring)
 - **No circular imports**: each layer only imports class="kw">from layers below it
