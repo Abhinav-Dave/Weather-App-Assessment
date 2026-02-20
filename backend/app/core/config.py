@@ -10,6 +10,8 @@ class Settings(BaseSettings):
     API_V1_PREFIX: str = "/api/v1"
     DATABASE_URL: str
     FRONTEND_ORIGIN: str = "http://localhost:5173"
+    OPENWEATHER_API_KEY: str
+    WEATHER_CACHE_MINUTES: int = 10
 
     class Config:
         env_file = ".env"

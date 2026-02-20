@@ -2,7 +2,7 @@ from sqlalchemy.orm import declarative_base
 
 Base = declarative_base()
 
-# Import models here in Section 2 so Base.metadata.create_all() sees them.
-# Example:
-#   from app.models.location import Location       # noqa: F401
-#   from app.models.weather_log import WeatherLog  # noqa: F401
+# Models imported here so Base.metadata.create_all() registers them.
+from app.models.location import Location        # noqa: F401, E402
+from app.models.weather_log import WeatherLog   # noqa: F401, E402
+from app.models.api_log import APILog           # noqa: F401, E402
