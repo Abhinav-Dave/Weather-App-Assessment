@@ -14,6 +14,11 @@ class WeatherUpdateRequest(BaseModel):
     notes: Optional[str] = Field(None, max_length=500, examples=["Pack a jacket."])
 
 
+class ReverseGeocodeResponse(BaseModel):
+    city: str
+    country: str
+
+
 class CurrentWeatherSchema(BaseModel):
     temperature: float
     feels_like: float

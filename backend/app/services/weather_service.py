@@ -15,13 +15,17 @@ from app.models.location import Location
 from app.models.weather_request import WeatherRequest as WeatherRequestModel
 from app.models.weather_current import WeatherCurrent
 from app.models.weather_forecast_day import WeatherForecastDay
-from app.schemas.weather import WeatherResponse, CurrentWeatherSchema, ForecastDaySchema, WeatherUpdateRequest
+from app.schemas.weather import (
+    WeatherResponse, CurrentWeatherSchema, ForecastDaySchema,
+    WeatherUpdateRequest, ReverseGeocodeResponse,
+)
 from app.services.api_log_service import log_api_call
 from app.services.cache_service import get_cached_request, get_or_create_location
 
 logger = logging.getLogger(__name__)
 
 GEOCODE_URL = "https://api.openweathermap.org/geo/1.0/direct"
+REVERSE_GEOCODE_URL = "https://api.openweathermap.org/geo/1.0/reverse"
 CURRENT_URL = "https://api.openweathermap.org/data/2.5/weather"
 FORECAST_URL = "https://api.openweathermap.org/data/2.5/forecast"
 
@@ -39,6 +43,34 @@ def _normalize_city(city: str) -> str:
 
 def _normalize_country(country: str) -> str:
     return country.strip().upper()
+
+
+# ── Reverse geocoding ──────────────────────────────────────────────────────
+
+def reverse_geocode(lat: float, lon: float, db: Session) -> ReverseGeocodeResponse:
+    """
+    Convert lat/lon to city + country using OpenWeather Reverse Geocoding API.
+    Raises ValueError if the location cannot be resolved.
+    """
+    params = {
+        "lat": lat,
+        "lon": lon,
+        "limit": 1,
+        "appid": settings.OPENWEATHER_API_KEY,
+    }
+    data = _call(REVERSE_GEOCODE_URL, params, endpoint="reverse_geocoding", db=db)
+
+    if not isinstance(data, list) or len(data) == 0:
+        raise ValueError("Location not found for the provided coordinates.")
+
+    result = data[0]
+    city = _normalize_city(result.get("name", ""))
+    country = _normalize_country(result.get("country", ""))
+
+    if not city or not country:
+        raise ValueError("Location not found for the provided coordinates.")
+
+    return ReverseGeocodeResponse(city=city, country=country)
 
 
 # ── Main pipeline ──────────────────────────────────────────────────────────
@@ -94,7 +126,7 @@ def update_weather_request(
     )
 
     if not req:
-        return None  # Router raises 404
+        return None
 
     if payload.label is not None:
         req.label = payload.label
@@ -109,10 +141,6 @@ def update_weather_request(
 # ── EXPORT ─────────────────────────────────────────────────────────────────
 
 def export_weather_csv(db: Session, city_filter: Optional[str] = None) -> Generator[str, None, None]:
-    """
-    Stream weather records as CSV rows. Joins WeatherRequest → WeatherCurrent → Location.
-    Optionally filters by city (case-insensitive).
-    """
     query = (
         db.query(WeatherRequestModel)
         .options(
@@ -124,14 +152,10 @@ def export_weather_csv(db: Session, city_filter: Optional[str] = None) -> Genera
 
     if city_filter:
         city_n = _normalize_city(city_filter)
-        query = query.join(WeatherRequestModel.location).filter(
-            Location.city == city_n
-        )
+        query = query.join(WeatherRequestModel.location).filter(Location.city == city_n)
 
     output = io.StringIO()
     writer = csv.DictWriter(output, fieldnames=CSV_COLUMNS)
-
-    # Header row
     writer.writeheader()
     yield output.getvalue()
 
