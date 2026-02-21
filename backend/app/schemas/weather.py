@@ -1,11 +1,17 @@
 from datetime import datetime, date
 from uuid import UUID
+from typing import Optional
 from pydantic import BaseModel, Field
 
 
 class WeatherRequest(BaseModel):
     city: str = Field(..., min_length=1, examples=["Toronto"])
     country: str = Field(..., min_length=2, max_length=2, examples=["CA"])
+
+
+class WeatherUpdateRequest(BaseModel):
+    label: Optional[str] = Field(None, max_length=32, examples=["trip"])
+    notes: Optional[str] = Field(None, max_length=500, examples=["Pack a jacket."])
 
 
 class CurrentWeatherSchema(BaseModel):
@@ -25,7 +31,7 @@ class ForecastDaySchema(BaseModel):
     temp_min: float
     temp_max: float
     temp_avg: float
-    humidity_avg: int | None
+    humidity_avg: Optional[int]
     weather_main: str
     weather_description: str
 
@@ -42,6 +48,8 @@ class WeatherResponse(BaseModel):
     forecast: list[ForecastDaySchema]
     cached: bool
     created_at: datetime
+    label: Optional[str] = None
+    notes: Optional[str] = None
 
     model_config = {"from_attributes": True}
 
@@ -54,6 +62,7 @@ class WeatherHistoryItem(BaseModel):
     temperature: float
     weather_main: str
     weather_description: str
-    cached: bool = False
+    label: Optional[str] = None
+    notes: Optional[str] = None
 
     model_config = {"from_attributes": True}

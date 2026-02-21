@@ -15,6 +15,8 @@ class WeatherRequest(Base):
     location_id = Column(Integer, ForeignKey("locations.id"), nullable=False, index=True)
     units = Column(String, default="metric", nullable=False)
     created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+    label = Column(String(32), nullable=True)
+    notes = Column(String(500), nullable=True)
 
     location = relationship("Location", back_populates="weather_requests")
     current = relationship(
