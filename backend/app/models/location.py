@@ -16,7 +16,11 @@ class Location(Base):
     longitude = Column(Float, nullable=False)
     created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
 
-    weather_logs = relationship("WeatherLog", back_populates="location", cascade="all, delete-orphan")
+    weather_requests = relationship(
+        "WeatherRequest",
+        back_populates="location",
+        cascade="all, delete-orphan",
+    )
 
     __table_args__ = (
         UniqueConstraint("city", "country", name="uq_location_city_country"),

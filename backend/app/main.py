@@ -8,7 +8,9 @@ from sqlalchemy import text
 from app.core.config import settings
 from app.db.database import engine, SessionLocal
 from app.db.base import Base
+import app.db.session  # noqa: F401 — registers all models with Base.metadata
 from app.api import health
+from app.api import weather
 
 logging.basicConfig(
     level=logging.INFO,
@@ -55,6 +57,7 @@ app.add_middleware(
 )
 
 app.include_router(health.router)
+app.include_router(weather.router, prefix=settings.API_V1_PREFIX)
 
 
 @app.get("/", tags=["Root"])
