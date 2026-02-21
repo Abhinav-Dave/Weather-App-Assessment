@@ -1,13 +1,16 @@
+# app/services/weather_service.py
+
 import logging
 import time
-from collections import Counter
+from collections import Counter, defaultdict
 from datetime import datetime, date
+from typing import Any
 
 import requests
-
 from sqlalchemy.orm import Session
 
 from app.core.config import settings
+from app.models.location import Location
 from app.models.weather_request import WeatherRequest as WeatherRequestModel
 from app.models.weather_current import WeatherCurrent
 from app.models.weather_forecast_day import WeatherForecastDay
@@ -17,81 +20,127 @@ from app.services.cache_service import get_cached_request, get_or_create_locatio
 
 logger = logging.getLogger(__name__)
 
+GEOCODE_URL = "https://api.openweathermap.org/geo/1.0/direct"
 CURRENT_URL = "https://api.openweathermap.org/data/2.5/weather"
 FORECAST_URL = "https://api.openweathermap.org/data/2.5/forecast"
+
+
+def _normalize_city(city: str) -> str:
+    return " ".join(city.strip().split()).title()
+
+
+def _normalize_country(country: str) -> str:
+    return country.strip().upper()
 
 
 def get_weather(city: str, country: str, db: Session) -> WeatherResponse:
     """
     Pipeline:
-      1. Geocode via current weather endpoint (lat/lon in response)
-      2. Get or create Location
-      3. Check cache (WeatherRequest within WEATHER_CACHE_MINUTES)
-      4. Cache hit → return stored result
-      5. Cache miss → fetch current + forecast, store, return
+      0) Normalize input
+      1) Try DB location lookup by (city,country) -> cache check FIRST (no external calls on cache hit)
+      2) If location missing -> geocode -> get_or_create_location
+      3) Cache miss -> fetch current + forecast -> store -> return
     """
-    # Step 1+2: Fetch current weather (also provides lat/lon — no separate geocoding call needed)
-    current_data, lat, lon = _fetch_current(city, country, db)
+    city_n = _normalize_city(city)
+    country_n = _normalize_country(country)
 
-    location = get_or_create_location(db, city, country, lat, lon)
+    # 1) Try DB lookup first (no external calls)
+    location = (
+        db.query(Location)
+        .filter(Location.city == city_n, Location.country == country_n)
+        .first()
+    )
 
-    # Step 3: Cache check
+    # 1b) Cache check BEFORE any OpenWeather call
+    if location:
+        cached_request = get_cached_request(db, location.id)
+        if cached_request and cached_request.current and len(cached_request.forecast_days) > 0:
+            logger.info(f"Cache hit for location_id={location.id}")
+            return _build_response(location, cached_request, cached=True)
+
+    # 2) Location missing OR cache miss -> now geocode (one external call)
+    lat, lon = _geocode(city_n, country_n, db)
+    location = get_or_create_location(db, city_n, country_n, lat, lon)
+
+    # Optional: re-check cache after location resolution
     cached_request = get_cached_request(db, location.id)
     if cached_request and cached_request.current and len(cached_request.forecast_days) > 0:
         logger.info(f"Cache hit for location_id={location.id}")
         return _build_response(location, cached_request, cached=True)
 
-    # Step 4: Fetch forecast
-    forecast_data = _fetch_forecast(city, country, db)
+    # 3) Cache miss -> fetch weather + forecast (two external calls)
+    logger.info(f"Cache miss — fetching from OpenWeather for location_id={location.id}")
+    current_data = _fetch_current(city_n, country_n, db)
+    forecast_data = _fetch_forecast(city_n, country_n, db)
 
-    # Step 5: Persist
     weather_req = _store(db, location, current_data, forecast_data)
-
     return _build_response(location, weather_req, cached=False)
 
 
 # ── Fetchers ───────────────────────────────────────────────────────────────
 
-def _fetch_current(city: str, country: str, db: Session) -> tuple[dict, float, float]:
+def _geocode(city: str, country: str, db: Session) -> tuple[float, float]:
+    params = {
+        "q": f"{city},{country}",
+        "limit": 1,
+        "appid": settings.OPENWEATHER_API_KEY,
+    }
+    data = _call(GEOCODE_URL, params, endpoint="geocoding", db=db)
+
+    if not isinstance(data, list) or len(data) == 0:
+        raise ValueError("Location not found.")
+
+    lat = data[0].get("lat")
+    lon = data[0].get("lon")
+    if lat is None or lon is None:
+        raise ValueError("Location not found.")
+
+    return float(lat), float(lon)
+
+
+def _fetch_current(city: str, country: str, db: Session) -> dict:
     params = {
         "q": f"{city},{country}",
         "units": "metric",
         "appid": settings.OPENWEATHER_API_KEY,
     }
     data = _call(CURRENT_URL, params, endpoint="current_weather", db=db)
-
-    coord = data.get("coord", {})
-    lat = coord.get("lat")
-    lon = coord.get("lon")
-
-    if lat is None or lon is None:
-        raise ValueError(f"Could not geocode location: {city}, {country}")
-
-    return data, lat, lon
+    if not isinstance(data, dict):
+        raise RuntimeError("Unexpected response from current weather API.")
+    return data
 
 
 def _fetch_forecast(city: str, country: str, db: Session) -> dict:
     params = {
         "q": f"{city},{country}",
         "units": "metric",
-        "cnt": 40,   # 5 days × 8 intervals per day
+        "cnt": 40,  # 5 days × 8 intervals/day
         "appid": settings.OPENWEATHER_API_KEY,
     }
-    return _call(FORECAST_URL, params, endpoint="forecast", db=db)
+    data = _call(FORECAST_URL, params, endpoint="forecast", db=db)
+    if not isinstance(data, dict):
+        raise RuntimeError("Unexpected response from forecast API.")
+    return data
 
 
-def _call(url: str, params: dict, endpoint: str, db: Session) -> dict:
+def _call(url: str, params: dict, endpoint: str, db: Session) -> Any:
     start = time.monotonic()
-    status_code = None
+    status_code: int | None = None
+    logged_in_except = False
+
     try:
         response = requests.get(url, params=params, timeout=10)
         status_code = response.status_code
         response.raise_for_status()
         return response.json()
+
     except requests.Timeout:
+        logged_in_except = True
         log_api_call(db, provider="openweather", endpoint=endpoint, status_code=None, elapsed_ms=None)
         raise RuntimeError(f"OpenWeather {endpoint} timed out.")
+
     except requests.HTTPError as exc:
+        logged_in_except = True
         log_api_call(db, provider="openweather", endpoint=endpoint, status_code=status_code, elapsed_ms=None)
         if status_code == 404:
             raise ValueError("Location not found.")
@@ -100,9 +149,12 @@ def _call(url: str, params: dict, endpoint: str, db: Session) -> dict:
         if status_code == 429:
             raise RuntimeError("OpenWeather rate limit reached.")
         raise RuntimeError(f"OpenWeather {endpoint} error: {exc}")
+
     finally:
         elapsed_ms = int((time.monotonic() - start) * 1000)
-        log_api_call(db, provider="openweather", endpoint=endpoint, status_code=status_code, elapsed_ms=elapsed_ms)
+        # Avoid duplicate logs if you already logged inside except blocks
+        if not logged_in_except:
+            log_api_call(db, provider="openweather", endpoint=endpoint, status_code=status_code, elapsed_ms=elapsed_ms)
 
 
 # ── Storage ────────────────────────────────────────────────────────────────
@@ -113,35 +165,39 @@ def _store(db: Session, location, current_data: dict, forecast_data: dict) -> We
         units="metric",
     )
     db.add(weather_req)
-    db.flush()  # Populate weather_req.id before FK references
+    db.flush()  # populate weather_req.id
 
-    # Current weather
+    # Current weather snapshot
     w = current_data["weather"][0]
     m = current_data["main"]
+    wind = current_data.get("wind", {})
+
     current = WeatherCurrent(
         request_id=weather_req.id,
         temperature=m["temp"],
         feels_like=m["feels_like"],
         humidity=m["humidity"],
-        wind_speed=current_data["wind"]["speed"],
+        wind_speed=wind.get("speed", 0.0),
         weather_main=w["main"],
         weather_description=w["description"],
     )
     db.add(current)
 
-    # Forecast days
+    # Forecast (5 daily rows)
     daily_summaries = _aggregate_forecast(forecast_data)
     for day in daily_summaries:
-        db.add(WeatherForecastDay(
-            request_id=weather_req.id,
-            forecast_date=day["date"],
-            temp_min=day["temp_min"],
-            temp_max=day["temp_max"],
-            temp_avg=day["temp_avg"],
-            humidity_avg=day["humidity_avg"],
-            weather_main=day["weather_main"],
-            weather_description=day["weather_description"],
-        ))
+        db.add(
+            WeatherForecastDay(
+                request_id=weather_req.id,
+                forecast_date=day["date"],
+                temp_min=day["temp_min"],
+                temp_max=day["temp_max"],
+                temp_avg=day["temp_avg"],
+                humidity_avg=day["humidity_avg"],
+                weather_main=day["weather_main"],
+                weather_description=day["weather_description"],
+            )
+        )
 
     db.commit()
     db.refresh(weather_req)
@@ -153,12 +209,10 @@ def _store(db: Session, location, current_data: dict, forecast_data: dict) -> We
 def _aggregate_forecast(forecast_data: dict) -> list[dict]:
     """
     OpenWeather /forecast returns 3-hour intervals.
-    Group by calendar date (UTC), compute min/max/avg temp,
-    avg humidity, and pick the most frequent weather_main per day.
-    Return exactly up to 5 days.
+    Group by calendar date (from dt_txt), compute min/max/avg temp,
+    avg humidity, and pick the most frequent weather_main/description per day.
+    Return exactly up to 5 daily entries.
     """
-    from collections import defaultdict
-
     buckets: dict[date, list[dict]] = defaultdict(list)
 
     for item in forecast_data.get("list", []):
@@ -169,30 +223,30 @@ def _aggregate_forecast(forecast_data: dict) -> list[dict]:
             continue
         buckets[item_date].append(item)
 
-    summaries = []
+    summaries: list[dict] = []
     for day_date in sorted(buckets.keys())[:5]:
         entries = buckets[day_date]
+
         temps = [e["main"]["temp"] for e in entries]
         humidities = [e["main"]["humidity"] for e in entries]
         weather_mains = [e["weather"][0]["main"] for e in entries]
         weather_descs = [e["weather"][0]["description"] for e in entries]
 
         most_common_main = Counter(weather_mains).most_common(1)[0][0]
-        # Pick description that corresponds to most common main
-        desc_for_main = [
-            d for m, d in zip(weather_mains, weather_descs) if m == most_common_main
-        ]
-        most_common_desc = Counter(desc_for_main).most_common(1)[0][0]
+        desc_for_main = [d for m, d in zip(weather_mains, weather_descs) if m == most_common_main]
+        most_common_desc = Counter(desc_for_main).most_common(1)[0][0] if desc_for_main else weather_descs[0]
 
-        summaries.append({
-            "date": day_date,
-            "temp_min": round(min(temps), 2),
-            "temp_max": round(max(temps), 2),
-            "temp_avg": round(sum(temps) / len(temps), 2),
-            "humidity_avg": round(sum(humidities) / len(humidities)),
-            "weather_main": most_common_main,
-            "weather_description": most_common_desc,
-        })
+        summaries.append(
+            {
+                "date": day_date,
+                "temp_min": round(min(temps), 2),
+                "temp_max": round(max(temps), 2),
+                "temp_avg": round(sum(temps) / len(temps), 2),
+                "humidity_avg": round(sum(humidities) / len(humidities)),
+                "weather_main": most_common_main,
+                "weather_description": most_common_desc,
+            }
+        )
 
     return summaries
 
