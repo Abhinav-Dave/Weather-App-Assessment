@@ -201,6 +201,7 @@ FRONTEND_ORIGIN     = https://your-app.vercel.app
 API_V1_PREFIX       = /api/v1
 PROJECT_NAME        = Weather App API
 WEATHER_CACHE_MINUTES = 10
+PYTHON_VERSION = 3.11.9
 ```
 
 5. Deploy. Your backend URL will be: `https://your-service.onrender.com`
