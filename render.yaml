@@ -8,12 +8,6 @@ services:
     envVars:
       - key: PYTHON_VERSION
         value: 3.11.9
-      - key: DATABASE_URL
-        sync: false
-      - key: OPENWEATHER_API_KEY
-        sync: false
-      - key: FRONTEND_ORIGIN
-        sync: false
       - key: API_V1_PREFIX
         value: /api/v1
       - key: PROJECT_NAME
