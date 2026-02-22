@@ -1,61 +1,22 @@
 import { apiClient } from "./api";
 
-// ── Local type definitions (avoids Vite module cache issues) ──
-interface WeatherRequestPayload {
-  city: string;
-  country: string;
-}
+export type {
+  WeatherRequestPayload,
+  WeatherUpdatePayload,
+  ReverseGeocodeResponse,
+  HealthResponse,
+  CurrentWeather,
+  ForecastDay,
+  WeatherResponse,
+} from "./types";
 
-interface WeatherUpdatePayload {
-  label?: string | null;
-  notes?: string | null;
-}
-
-interface ReverseGeocodeResponse {
-  city: string;
-  country: string;
-}
-
-interface HealthResponse {
-  status: string;
-  database: string;
-}
-
-interface CurrentWeather {
-  temperature: number;
-  feels_like: number;
-  humidity: number;
-  wind_speed: number;
-  weather_main: string;
-  weather_description: string;
-  retrieved_at: string;
-}
-
-interface ForecastDay {
-  forecast_date: string;
-  temp_min: number;
-  temp_max: number;
-  temp_avg: number;
-  humidity_avg: number;
-  weather_main: string;
-  weather_description: string;
-}
-
-export interface WeatherResponse {
-  id: string;
-  city: string;
-  country: string;
-  latitude: number;
-  longitude: number;
-  current: CurrentWeather;
-  forecast: ForecastDay[];
-  cached: boolean;
-  created_at: string;
-  label: string | null;
-  notes: string | null;
-}
-
-// ── API calls ──────────────────────────────────────────────────
+import type {
+  WeatherRequestPayload,
+  WeatherUpdatePayload,
+  ReverseGeocodeResponse,
+  HealthResponse,
+  WeatherResponse,
+} from "./types";
 
 const BASE = "/api/v1/weather";
 
@@ -81,10 +42,7 @@ export async function deleteWeatherRequest(id: string): Promise<void> {
   await apiClient.delete(`${BASE}/${id}`);
 }
 
-export async function reverseGeocode(
-  lat: number,
-  lon: number
-): Promise<ReverseGeocodeResponse> {
+export async function reverseGeocode(lat: number, lon: number): Promise<ReverseGeocodeResponse> {
   const { data } = await apiClient.get<ReverseGeocodeResponse>(
     `${BASE}/reverse-geocode`,
     { params: { lat, lon } }

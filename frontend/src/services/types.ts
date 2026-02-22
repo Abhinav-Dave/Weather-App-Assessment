@@ -13,6 +13,11 @@ export interface ReverseGeocodeResponse {
   country: string;
 }
 
+export interface HealthResponse {
+  status: string;
+  database: string;
+}
+
 export interface CurrentWeather {
   temperature: number;
   feels_like: number;
@@ -45,9 +50,4 @@ export interface WeatherResponse {
   created_at: string;
   label: string | null;
   notes: string | null;
-}
-
-export interface HealthResponse {
-  status: string;
-  database: string;
 }
