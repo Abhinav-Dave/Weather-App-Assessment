@@ -18,8 +18,8 @@ function buildSuggestions(current: CurrentWeather, forecast: ForecastDay[]): Sug
     : current.temperature;
 
   const maxWind = forecast.length
-    ? Math.max(...forecast.map(d => current.wind_speed), current.wind_speed)
-    : current.wind_speed;
+  ? Math.max(...forecast.map(() => current.wind_speed), current.wind_speed)
+  : current.wind_speed;
 
   const hasRain = forecast.some(
     d =>
@@ -78,8 +78,8 @@ function TripSummary({ current, forecast }: Props) {
     : current.temperature;
 
   const maxWind = forecast.length
-    ? Math.max(...forecast.map(d => current.wind_speed), current.wind_speed)
-    : current.wind_speed;
+  ? Math.max(...forecast.map(() => current.wind_speed), current.wind_speed)
+  : current.wind_speed;
 
   const hasRain = forecast.some(
     d =>
